@@ -1,0 +1,51 @@
+name: Build ProFTPD for OpenWrt 24.10 x86_64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gawk unzip wget python3
+
+    - name: Download OpenWrt SDK
+      run: |
+        wget https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
+        tar -xf openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
+        mv openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64 openwrt-sdk
+
+    - name: Update feeds
+      run: |
+        cd openwrt-sdk
+        echo "src-git packages https://git.openwrt.org/feed/packages.git" >> feeds.conf
+        echo "src-git luci https://git.openwrt.org/project/luci.git" >> feeds.conf
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Configure and build ProFTPD
+      run: |
+        cd openwrt-sdk
+        echo "CONFIG_PACKAGE_proftpd=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-proftpd=y" >> .config
+        echo "CONFIG_PACKAGE_luci-i18n-proftpd-zh-cn=y" >> .config
+        make defconfig
+        make package/proftpd/compile V=s
+        make package/luci-app-proftpd/compile V=s || true
+        make package/luci-i18n-proftpd-zh-cn/compile V=s || true
+
+    - name: Upload IPK artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: proftpd_openwrt_x86_64_24.10
+        path: |
+          openwrt-sdk/bin/packages/*/proftpd*.ipk
+          openwrt-sdk/bin/packages/*/luci-app-proftpd*.ipk
+          openwrt-sdk/bin/packages/*/luci-i18n-proftpd-zh-cn*.ipk
